@@ -1,51 +1,26 @@
 const router = require("express").Router();
+
 const Users = require("./users-model.js");
-const { restricted, only } = require("../auth/auth-middleware.js");
+const loginCheck = require('../auth/logged-in-checked-middleware.js');
+const restricted = require("../auth/restricted-middleware.js");
+const checkRole = require("../auth/check-role-middleware.js");
 
-/**
-  [GET] /api/users
 
-  This endpoint is RESTRICTED: only authenticated clients
-  should have access.
-
-  response:
-  status 200
-  [
-    {
-      "user_id": 1,
-      "username": "bob"
-    }
-  ]
- */
-router.get("/", restricted, (req, res, next) => { // done for you
-  Users.find()
-    .then(users => {
-      res.json(users);
-    })
-    .catch(next);
+router.get("/", restricted, loginCheck, checkRole('admin'), (req, res) => {
+    Users.find()
+          .then(users => {
+                res.json(users);
+          })
+          .catch(err => res.send(err));
 });
 
-/**
-  [GET] /api/users/:user_id
+router.get("/me", restricted, checkRole('user'), (req, res) => {
+      Users.findBy({username: req?.decodedJWT?.username})
+            .then(([user]) => {
+                  res.json(user);
+            })
+            .catch(err => res.send(err));
+  });
 
-  This endpoint is RESTRICTED: only users with role 'admin'
-  should have access.
 
-  response:
-  status 200
-  [
-    {
-      "user_id": 1,
-      "username": "bob"
-    }
-  ]
- */
-router.get("/:user_id", restricted, only('admin'), (req, res, next) => { // done for you
-  Users.findById(req.params.user_id)
-    .then(user => {
-      res.json(user);
-    })
-    .catch(next);
-});
-
-module.exports = router;
+module.exports = router; 

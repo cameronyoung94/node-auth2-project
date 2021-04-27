@@ -1,42 +1,79 @@
-const router = require("express").Router();
-const { checkUsernameExists, validateRoleName } = require('./auth-middleware');
-const { JWT_SECRET } = require("../secrets"); // use this secret!
+const router = require('express').Router();
 
-router.post("/register", validateRoleName, (req, res, next) => {
-  /**
-    [POST] /api/auth/register { "username": "anna", "password": "1234", "role_name": "angel" }
+const users = require('../users/users-model.js');
 
-    response:
-    status 201
-    {
-      "user"_id: 3,
-      "username": "anna",
-      "role_name": "angel"
+const bcryptjs = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const secrets = require('../../config/secrets.js')
+
+
+router.post('/register', async (req,res) => {
+    let user = req.body;
+
+    const hash = bcryptjs.hashSync(user.password, 10);
+    user.password = hash
+
+
+    try{
+    const savedUser = await users.add(user);
+    res.status(201).json(savedUser);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({message:"error creating user"})
     }
-   */
-});
+})
 
+router.post('/login', async (req,res) => {
+    let { username, password} = req.body;
+try{
+const user = users.findBy({username}).first();
 
-router.post("/login", checkUsernameExists, (req, res, next) => {
-  /**
-    [POST] /api/auth/login { "username": "sue", "password": "1234" }
-
-    response:
-    status 200
-    {
-      "message": "sue is back!",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ETC.ETC"
+     if (user && bcryptjs.compareSync(password, user.password)) {
+        const token = generateToken(user);
+        req.session.user = user;
+                res.status(200).json({message: `welcome ${user.username}`, token});
+    } else {
+        res.status(401).json({message:"invalid credentials"})
     }
+} catch (err) {
+    console.log(err);
+    res.status(500).json({message:"error creating user"})
+}
 
-    The token must expire in one day, and must provide the following information
-    in its payload:
+})
 
-    {
-      "subject"  : 1       // the user_id of the authenticated user
-      "username" : "bob"   // the username of the authenticated user
-      "role_name": "admin" // the role of the authenticated user
+router.get("/logout", (req,res) => {
+    if (req.session) {
+        req.session.destroy((err) => {
+            if (err) {
+                res.send("error! Not groovy baby")
+            } else {
+                res.send("Groovy baby! Goodbye")
+            }
+        })
+    } else {
+        res.end();
     }
-   */
-});
+})
 
-module.exports = router;
+function generateToken(user) {
+
+    const payload = {
+        subject: user.id,
+        username: user.username,
+        role: user.role
+    };
+
+    const options = {
+        expiresIn: '1h'
+    };
+
+    const secret = secrets.jwtSecret;
+
+  return jwt.sign(payload, secret, options);
+
+
+}
+
+
+module.exports = router; 
